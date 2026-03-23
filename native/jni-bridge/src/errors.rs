@@ -849,12 +849,7 @@ mod tests {
                 let a: JString = env.new_string("9").unwrap();
                 let b: JString = env.new_string("3").unwrap();
                 let actual = unsafe {
-                    Java_Errors_div_with_parse(
-                        &EnvUnowned::from_raw(env.get_raw()),
-                        class,
-                        a,
-                        b,
-                    )
+                    Java_Errors_div_with_parse(&EnvUnowned::from_raw(env.get_raw()), class, a, b)
                 };
 
                 assert_eq!(3, actual);
@@ -875,12 +870,7 @@ mod tests {
                 let a: JString = env.new_string("NaN").unwrap();
                 let b: JString = env.new_string("3").unwrap();
                 let _actual = unsafe {
-                    Java_Errors_div_with_parse(
-                        &EnvUnowned::from_raw(env.get_raw()),
-                        class,
-                        a,
-                        b,
-                    )
+                    Java_Errors_div_with_parse(&EnvUnowned::from_raw(env.get_raw()), class, a, b)
                 };
 
                 assert_pending_java_exception_detailed(
@@ -906,12 +896,7 @@ mod tests {
                 let input = env.new_int_array(3).unwrap();
                 input.set_region(env, 0, &buf).unwrap();
                 let actual = unsafe {
-                    Java_Errors_array_div(
-                        &EnvUnowned::from_raw(env.get_raw()),
-                        class,
-                        &input,
-                        2,
-                    )
+                    Java_Errors_array_div(&EnvUnowned::from_raw(env.get_raw()), class, &input, 2)
                 };
                 let actual_s = unsafe { JIntArray::from_raw(env, actual) };
 
@@ -936,12 +921,7 @@ mod tests {
                 let input = env.new_int_array(3).unwrap();
                 input.set_region(env, 0, &buf).unwrap();
                 let _actual = unsafe {
-                    Java_Errors_array_div(
-                        &EnvUnowned::from_raw(env.get_raw()),
-                        class,
-                        &input,
-                        0,
-                    )
+                    Java_Errors_array_div(&EnvUnowned::from_raw(env.get_raw()), class, &input, 0)
                 };
 
                 assert_pending_java_exception_detailed(
@@ -996,9 +976,7 @@ mod tests {
         input: JString,
     ) -> jstring {
         try_unwrap_or_throw(e, |env| {
-            let input: String = input
-                .try_to_string(env)
-                .expect("Couldn't get java string!");
+            let input: String = input.try_to_string(env).expect("Couldn't get java string!");
 
             let output = env
                 .new_string(format!("Hello, {input}!"))
