@@ -20,7 +20,7 @@ use std::{
     sync::Arc,
 };
 
-use jni::objects::{GlobalRef, JObject};
+use jni::objects::{Global, JObject};
 
 use crate::{errors::CometResult, jvm_bridge::JVMClasses};
 use datafusion::common::resources_err;
@@ -34,7 +34,7 @@ use parking_lot::Mutex;
 /// A DataFusion fair `MemoryPool` implementation for Comet. Internally this is
 /// implemented via delegating calls to [`crate::jvm_bridge::CometTaskMemoryManager`].
 pub struct CometFairMemoryPool {
-    task_memory_manager_handle: Arc<GlobalRef<JObject<'static>>>,
+    task_memory_manager_handle: Arc<Global<JObject<'static>>>,
     pool_size: usize,
     state: Mutex<CometFairPoolState>,
 }
@@ -57,7 +57,7 @@ impl Debug for CometFairMemoryPool {
 
 impl CometFairMemoryPool {
     pub fn new(
-        task_memory_manager_handle: Arc<GlobalRef<JObject<'static>>>,
+        task_memory_manager_handle: Arc<Global<JObject<'static>>>,
         pool_size: usize,
     ) -> CometFairMemoryPool {
         Self {

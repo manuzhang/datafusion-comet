@@ -40,7 +40,7 @@ use datafusion::{
 };
 use futures::Stream;
 use itertools::Itertools;
-use jni::objects::{GlobalRef, JObject, JValue};
+use jni::objects::{Global, JObject, JValue};
 use std::rc::Rc;
 use std::{
     any::Any,
@@ -59,7 +59,7 @@ pub struct ScanExec {
     /// environment `JNIEnv` from the execution context.
     pub exec_context_id: i64,
     /// The input source of scan node. It is a global reference of JVM `CometBatchIterator` object.
-    pub input_source: Option<Arc<GlobalRef<JObject<'static>>>>,
+    pub input_source: Option<Arc<Global<JObject<'static>>>>,
     /// A description of the input source for informational purposes
     pub input_source_description: String,
     /// The data types of columns of the input batch. Converted from Spark schema.
@@ -82,7 +82,7 @@ pub struct ScanExec {
 impl ScanExec {
     pub fn new(
         exec_context_id: i64,
-        input_source: Option<Arc<GlobalRef<JObject<'static>>>>,
+        input_source: Option<Arc<Global<JObject<'static>>>>,
         input_source_description: &str,
         data_types: Vec<DataType>,
         arrow_ffi_safe: bool,
@@ -284,8 +284,8 @@ impl ScanExec {
         let long_array_addrs = env.new_long_array(num_cols)?;
         let long_schema_addrs = env.new_long_array(num_cols)?;
 
-        env.set_long_array_region(&long_array_addrs, 0, &array_addrs)?;
-        env.set_long_array_region(&long_schema_addrs, 0, &schema_addrs)?;
+        long_array_addrs.set_region(env, 0, &array_addrs)?;
+        long_schema_addrs.set_region(env, 0, &schema_addrs)?;
 
         let array_obj = JObject::from(long_array_addrs);
         let schema_obj = JObject::from(long_schema_addrs);
@@ -334,8 +334,8 @@ impl ScanExec {
             // Prepare JNI arrays for the export call
             let indices_array_obj = env.new_long_array(num_cols)?;
             let indices_schema_obj = env.new_long_array(num_cols)?;
-            env.set_long_array_region(&indices_array_obj, 0, &indices_array_addrs)?;
-            env.set_long_array_region(&indices_schema_obj, 0, &indices_schema_addrs)?;
+            indices_array_obj.set_region(env, 0, &indices_array_addrs)?;
+            indices_schema_obj.set_region(env, 0, &indices_schema_addrs)?;
 
             // Export selection indices from JVM
             let _exported_count: i32 = unsafe {

@@ -173,7 +173,7 @@ impl PhysicalExpr for Subquery {
                         comet_exec.get_string(self.exec_context_id, self.id) -> StringWrapper
                     )?;
 
-                    let string = unsafe { JString::from_raw(env, string.get().as_raw()) }
+                    let string = JString::from_raw(env, string.get().as_raw())
                         .try_to_string(env)
                         .unwrap();
                     Ok(ColumnarValue::Scalar(ScalarValue::Utf8(Some(string))))
