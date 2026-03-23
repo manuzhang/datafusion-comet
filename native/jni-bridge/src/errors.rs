@@ -38,8 +38,8 @@ use std::{
 // lifetime checker won't let us.
 use jni::sys::{jboolean, jbyte, jchar, jdouble, jfloat, jint, jlong, jobject, jshort};
 
-use jni::objects::{GlobalRef, JThrowable};
-use jni::{strings::JNIString, Env, JNIEnv, Outcome};
+use jni::objects::{Global, JThrowable};
+use jni::{strings::JNIString, Env, EnvUnowned, Outcome};
 use lazy_static::lazy_static;
 use parquet::errors::ParquetError;
 use thiserror::Error;
@@ -72,7 +72,7 @@ pub enum ExecutionError {
     JavaException {
         class: String,
         msg: String,
-        throwable: GlobalRef<JThrowable<'static>>,
+        throwable: Global<JThrowable<'static>>,
     },
 }
 
@@ -167,7 +167,7 @@ pub enum CometError {
     JavaException {
         class: String,
         msg: String,
-        throwable: GlobalRef<JThrowable<'static>>,
+        throwable: Global<JThrowable<'static>>,
     },
 }
 
@@ -668,13 +668,13 @@ fn to_stacktrace_string(msg: String, backtrace_string: String) -> Result<String,
 
 // It is currently undefined behavior to unwind from Rust code into foreign code, so we can wrap
 // our JNI functions and turn these panics into a `RuntimeException`.
-pub fn try_unwrap_or_throw<T, F>(env: &JNIEnv, f: F) -> T
+pub fn try_unwrap_or_throw<T, F>(env: &EnvUnowned, f: F) -> T
 where
     T: JNIDefault,
     F: FnOnce(&mut Env) -> Result<T, CometError> + UnwindSafe,
 {
     let raw = env.as_raw();
-    let mut env1 = unsafe { JNIEnv::from_raw(raw) };
+    let mut env1 = unsafe { EnvUnowned::from_raw(raw) };
     match env1.with_env(f).into_outcome() {
         Outcome::Ok(value) => value,
         Outcome::Err(err) => {
@@ -702,7 +702,7 @@ mod tests {
     use jni::{
         objects::{JClass, JIntArray, JString, JThrowable},
         sys::{jintArray, jstring},
-        AttachGuard, InitArgsBuilder, JNIEnv, JNIVersion, JavaVM,
+        EnvUnowned, InitArgsBuilder, JNIVersion, JavaVM,
     };
 
     use assertables::assert_starts_with;
@@ -728,7 +728,7 @@ mod tests {
             // Build the VM properties
             let jvm_args = InitArgsBuilder::new()
                 // Pass the JNI API version (default is 8)
-                .version(JNIVersion::V8)
+                .version(JNIVersion::V1_8)
                 // You can additionally pass any JVM options (standard, like a system property,
                 // or VM-specific).
                 // Here we enable some extra JNI checks useful during development
@@ -751,25 +751,24 @@ mod tests {
         }
     }
 
-    fn attach_current_thread() -> AttachGuard<'static> {
-        jvm().attach_current_thread().expect("Unable to attach JVM")
-    }
-
     #[test]
     #[cfg_attr(miri, ignore)] // miri can't call foreign function `dlopen`
     pub fn error_from_panic() {
-        let _guard = attach_current_thread();
-        let mut env = jvm().get_env().unwrap();
+        jvm()
+            .attach_current_thread(|env| -> jni::errors::Result<()> {
+                let env_unowned = unsafe { EnvUnowned::from_raw(env.get_raw()) };
+                try_unwrap_or_throw(&env_unowned, |_| -> CometResult<()> {
+                    panic!("oops!");
+                });
 
-        try_unwrap_or_throw(&env, |_| -> CometResult<()> {
-            panic!("oops!");
-        });
-
-        assert_pending_java_exception_detailed(
-            &mut env,
-            Some("java/lang/RuntimeException"),
-            Some("oops!"),
-        );
+                assert_pending_java_exception_detailed(
+                    env,
+                    Some("java/lang/RuntimeException"),
+                    Some("oops!"),
+                );
+                Ok(())
+            })
+            .unwrap();
     }
 
     // Verify that functions that return an object are handled correctly.  This is basically
@@ -777,17 +776,21 @@ mod tests {
     #[test]
     #[cfg_attr(miri, ignore)] // miri can't call foreign function `dlopen`
     pub fn object_result() {
-        let _guard = attach_current_thread();
-        let mut env = jvm().get_env().unwrap();
+        jvm()
+            .attach_current_thread(|env| -> jni::errors::Result<()> {
+                let clazz = env.find_class(jni::jni_str!("java/lang/Object")).unwrap();
+                let input = env.new_string("World").unwrap();
 
-        let clazz = env.find_class("java/lang/Object").unwrap();
-        let input = env.new_string("World".to_string()).unwrap();
+                let actual = unsafe {
+                    Java_Errors_hello(&EnvUnowned::from_raw(env.get_raw()), clazz, input)
+                };
+                let actual_s = unsafe { JString::from_raw(env, actual) };
 
-        let actual = Java_Errors_hello(&env, clazz, input);
-        let actual_s = unsafe { JString::from_raw(actual) };
-
-        let actual_string = String::from(env.get_string(&actual_s).unwrap().to_str().unwrap());
-        assert_eq!("Hello, World!", actual_string);
+                let actual_string = actual_s.try_to_string(env).unwrap();
+                assert_eq!("Hello, World!", actual_string);
+                Ok(())
+            })
+            .unwrap();
     }
 
     // Verify that functions that return an native time are handled correctly.  This is basically
@@ -795,16 +798,19 @@ mod tests {
     #[test]
     #[cfg_attr(miri, ignore)] // miri can't call foreign function `dlopen`
     pub fn jlong_result() {
-        let _guard = attach_current_thread();
-        let mut env = jvm().get_env().unwrap();
+        jvm()
+            .attach_current_thread(|env| -> jni::errors::Result<()> {
+                // Class java.lang.object is just a stand-in
+                let class = env.find_class(jni::jni_str!("java/lang/Object")).unwrap();
+                let a: jlong = 6;
+                let b: jlong = 3;
+                let actual =
+                    unsafe { Java_Errors_div(&EnvUnowned::from_raw(env.get_raw()), class, a, b) };
 
-        // Class java.lang.object is just a stand-in
-        let class = env.find_class("java/lang/Object").unwrap();
-        let a: jlong = 6;
-        let b: jlong = 3;
-        let actual = Java_Errors_div(&env, class, a, b);
-
-        assert_eq!(2, actual);
+                assert_eq!(2, actual);
+                Ok(())
+            })
+            .unwrap();
     }
 
     // Verify that functions that return an array can handle throwing exceptions.  The test
@@ -812,20 +818,23 @@ mod tests {
     #[test]
     #[cfg_attr(miri, ignore)] // miri can't call foreign function `dlopen`
     pub fn jlong_panic_exception() {
-        let _guard = attach_current_thread();
-        let mut env = jvm().get_env().unwrap();
+        jvm()
+            .attach_current_thread(|env| -> jni::errors::Result<()> {
+                // Class java.lang.object is just a stand-in
+                let class = env.find_class(jni::jni_str!("java/lang/Object")).unwrap();
+                let a: jlong = 6;
+                let b: jlong = 0;
+                let _actual =
+                    unsafe { Java_Errors_div(&EnvUnowned::from_raw(env.get_raw()), class, a, b) };
 
-        // Class java.lang.object is just a stand-in
-        let class = env.find_class("java/lang/Object").unwrap();
-        let a: jlong = 6;
-        let b: jlong = 0;
-        let _actual = Java_Errors_div(&env, class, a, b);
-
-        assert_pending_java_exception_detailed(
-            &mut env,
-            Some("java/lang/RuntimeException"),
-            Some("attempt to divide by zero"),
-        );
+                assert_pending_java_exception_detailed(
+                    env,
+                    Some("java/lang/RuntimeException"),
+                    Some("attempt to divide by zero"),
+                );
+                Ok(())
+            })
+            .unwrap();
     }
 
     // Verify that functions that return an native time are handled correctly.  This is basically
@@ -833,16 +842,25 @@ mod tests {
     #[test]
     #[cfg_attr(miri, ignore)] // miri can't call foreign function `dlopen`
     pub fn jlong_result_ok() {
-        let _guard = attach_current_thread();
-        let mut env = jvm().get_env().unwrap();
+        jvm()
+            .attach_current_thread(|env| -> jni::errors::Result<()> {
+                // Class java.lang.object is just a stand-in
+                let class = env.find_class(jni::jni_str!("java/lang/Object")).unwrap();
+                let a: JString = env.new_string("9").unwrap();
+                let b: JString = env.new_string("3").unwrap();
+                let actual = unsafe {
+                    Java_Errors_div_with_parse(
+                        &EnvUnowned::from_raw(env.get_raw()),
+                        class,
+                        a,
+                        b,
+                    )
+                };
 
-        // Class java.lang.object is just a stand-in
-        let class = env.find_class("java/lang/Object").unwrap();
-        let a: JString = env.new_string("9".to_string()).unwrap();
-        let b: JString = env.new_string("3".to_string()).unwrap();
-        let actual = Java_Errors_div_with_parse(&env, class, a, b);
-
-        assert_eq!(3, actual);
+                assert_eq!(3, actual);
+                Ok(())
+            })
+            .unwrap();
     }
 
     // Verify that functions that return an native time are handled correctly.  This is basically
@@ -850,20 +868,29 @@ mod tests {
     #[test]
     #[cfg_attr(miri, ignore)] // miri can't call foreign function `dlopen`
     pub fn jlong_result_err() {
-        let _guard = attach_current_thread();
-        let mut env = jvm().get_env().unwrap();
+        jvm()
+            .attach_current_thread(|env| -> jni::errors::Result<()> {
+                // Class java.lang.object is just a stand-in
+                let class = env.find_class(jni::jni_str!("java/lang/Object")).unwrap();
+                let a: JString = env.new_string("NaN").unwrap();
+                let b: JString = env.new_string("3").unwrap();
+                let _actual = unsafe {
+                    Java_Errors_div_with_parse(
+                        &EnvUnowned::from_raw(env.get_raw()),
+                        class,
+                        a,
+                        b,
+                    )
+                };
 
-        // Class java.lang.object is just a stand-in
-        let class = env.find_class("java/lang/Object").unwrap();
-        let a: JString = env.new_string("NaN".to_string()).unwrap();
-        let b: JString = env.new_string("3".to_string()).unwrap();
-        let _actual = Java_Errors_div_with_parse(&env, class, a, b);
-
-        assert_pending_java_exception_detailed(
-            &mut env,
-            Some("java/lang/NumberFormatException"),
-            Some("invalid digit found in string"),
-        );
+                assert_pending_java_exception_detailed(
+                    env,
+                    Some("java/lang/NumberFormatException"),
+                    Some("invalid digit found in string"),
+                );
+                Ok(())
+            })
+            .unwrap();
     }
 
     // Verify that functions that return an array are handled correctly.  This is basically
@@ -871,20 +898,29 @@ mod tests {
     #[test]
     #[cfg_attr(miri, ignore)] // miri can't call foreign function `dlopen`
     pub fn jint_array_result() {
-        let _guard = attach_current_thread();
-        let mut env = jvm().get_env().unwrap();
+        jvm()
+            .attach_current_thread(|env| -> jni::errors::Result<()> {
+                // Class java.lang.object is just a stand-in
+                let class = env.find_class(jni::jni_str!("java/lang/Object")).unwrap();
+                let buf = [2, 4, 6];
+                let input = env.new_int_array(3).unwrap();
+                input.set_region(env, 0, &buf).unwrap();
+                let actual = unsafe {
+                    Java_Errors_array_div(
+                        &EnvUnowned::from_raw(env.get_raw()),
+                        class,
+                        &input,
+                        2,
+                    )
+                };
+                let actual_s = unsafe { JIntArray::from_raw(env, actual) };
 
-        // Class java.lang.object is just a stand-in
-        let class = env.find_class("java/lang/Object").unwrap();
-        let buf = [2, 4, 6];
-        let input = env.new_int_array(3).unwrap();
-        env.set_int_array_region(&input, 0, &buf).unwrap();
-        let actual = Java_Errors_array_div(&env, class, &input, 2);
-        let actual_s = unsafe { JIntArray::from_raw(actual) };
-
-        let mut buf: [i32; 3] = [0; 3];
-        env.get_int_array_region(&actual_s, 0, &mut buf).unwrap();
-        assert_eq!([1, 2, 3], buf);
+                let mut buf: [i32; 3] = [0; 3];
+                actual_s.get_region(env, 0, &mut buf).unwrap();
+                assert_eq!([1, 2, 3], buf);
+                Ok(())
+            })
+            .unwrap();
     }
 
     // Verify that functions that return an array can handle throwing exceptions.  The test
@@ -892,21 +928,30 @@ mod tests {
     #[test]
     #[cfg_attr(miri, ignore)] // miri can't call foreign function `dlopen`
     pub fn jint_array_panic_exception() {
-        let _guard = attach_current_thread();
-        let mut env = jvm().get_env().unwrap();
+        jvm()
+            .attach_current_thread(|env| -> jni::errors::Result<()> {
+                // Class java.lang.object is just a stand-in
+                let class = env.find_class(jni::jni_str!("java/lang/Object")).unwrap();
+                let buf = [2, 4, 6];
+                let input = env.new_int_array(3).unwrap();
+                input.set_region(env, 0, &buf).unwrap();
+                let _actual = unsafe {
+                    Java_Errors_array_div(
+                        &EnvUnowned::from_raw(env.get_raw()),
+                        class,
+                        &input,
+                        0,
+                    )
+                };
 
-        // Class java.lang.object is just a stand-in
-        let class = env.find_class("java/lang/Object").unwrap();
-        let buf = [2, 4, 6];
-        let input = env.new_int_array(3).unwrap();
-        env.set_int_array_region(&input, 0, &buf).unwrap();
-        let _actual = Java_Errors_array_div(&env, class, &input, 0);
-
-        assert_pending_java_exception_detailed(
-            &mut env,
-            Some("java/lang/RuntimeException"),
-            Some("attempt to divide by zero"),
-        );
+                assert_pending_java_exception_detailed(
+                    env,
+                    Some("java/lang/RuntimeException"),
+                    Some("attempt to divide by zero"),
+                );
+                Ok(())
+            })
+            .unwrap();
     }
 
     /// Test that conversion of a serialized backtrace to an equivalent stacktrace message.
@@ -946,15 +991,14 @@ mod tests {
     // * throwing an exception from `.expect()`
     #[no_mangle]
     pub extern "system" fn Java_Errors_hello(
-        e: &JNIEnv,
+        e: &EnvUnowned,
         _class: JClass,
         input: JString,
     ) -> jstring {
-        try_unwrap_or_throw(e, |mut env| {
-            let input: String = env
-                .get_string(&input)
-                .expect("Couldn't get java string!")
-                .into();
+        try_unwrap_or_throw(e, |env| {
+            let input: String = input
+                .try_to_string(env)
+                .expect("Couldn't get java string!");
 
             let output = env
                 .new_string(format!("Hello, {input}!"))
@@ -969,7 +1013,7 @@ mod tests {
     // * throwing an exception when dividing by zero
     #[no_mangle]
     pub extern "system" fn Java_Errors_div(
-        env: &JNIEnv,
+        env: &EnvUnowned,
         _class: JClass,
         a: jlong,
         b: jlong,
@@ -979,14 +1023,14 @@ mod tests {
 
     #[no_mangle]
     pub extern "system" fn Java_Errors_div_with_parse(
-        e: &JNIEnv,
+        e: &EnvUnowned,
         _class: JClass,
         a: JString,
         b: JString,
     ) -> jlong {
-        try_unwrap_or_throw(e, |mut env| {
-            let a_value: i64 = env.get_string(&a)?.to_str()?.parse()?;
-            let b_value: i64 = env.get_string(&b)?.to_str()?.parse()?;
+        try_unwrap_or_throw(e, |env| {
+            let a_value: i64 = a.try_to_string(env)?.parse()?;
+            let b_value: i64 = b.try_to_string(env)?.parse()?;
             Ok(a_value / b_value)
         })
     }
@@ -996,19 +1040,19 @@ mod tests {
     // * throwing an exception when dividing by zero
     #[no_mangle]
     pub extern "system" fn Java_Errors_array_div(
-        e: &JNIEnv,
+        e: &EnvUnowned,
         _class: JClass,
         input: &JIntArray,
         divisor: jint,
     ) -> jintArray {
         try_unwrap_or_throw(e, |env| {
             let mut input_buf: [jint; 3] = [0; 3];
-            env.get_int_array_region(input, 0, &mut input_buf)?;
+            input.get_region(env, 0, &mut input_buf)?;
 
             let buf = input_buf.map(|v| -> jint { v / divisor });
 
             let result = env.new_int_array(3)?;
-            env.set_int_array_region(&result, 0, &buf)?;
+            result.set_region(env, 0, &buf)?;
             Ok(result.into_raw())
         })
     }
@@ -1016,13 +1060,13 @@ mod tests {
     // Helper method that asserts there is a pending Java exception which is an `instance_of`
     // `expected_type` with a message matching `expected_message` and clears it if any.
     fn assert_pending_java_exception_detailed(
-        env: &mut JNIEnv,
+        env: &mut Env,
         expected_type: Option<&str>,
         expected_message: Option<&str>,
     ) {
-        assert!(env.exception_check().unwrap());
+        assert!(env.exception_check());
         let exception = env.exception_occurred().expect("Unable to get exception");
-        env.exception_clear().unwrap();
+        env.exception_clear();
 
         if let Some(expected_type) = expected_type {
             assert_exception_type(env, &exception, expected_type);
@@ -1034,29 +1078,42 @@ mod tests {
     }
 
     // Asserts that exception is an `instance_of` `expected_type` type.
-    fn assert_exception_type(env: &mut JNIEnv, exception: &JThrowable, expected_type: &str) {
-        if !env.is_instance_of(exception, expected_type).unwrap() {
+    fn assert_exception_type(env: &mut Env, exception: &JThrowable, expected_type: &str) {
+        if !env
+            .is_instance_of(exception, jni::strings::JNIString::new(expected_type))
+            .unwrap()
+        {
             let class: JClass = env.get_object_class(exception).unwrap();
             let name = env
-                .call_method(class, "getName", "()Ljava/lang/String;", &[])
+                .call_method(
+                    class,
+                    jni::jni_str!("getName"),
+                    jni::jni_sig!("()Ljava/lang/String;"),
+                    &[],
+                )
                 .unwrap()
                 .l()
                 .unwrap();
-            let name_string = name.into();
-            let class_name: String = env.get_string(&name_string).unwrap().into();
+            let name_string = unsafe { JString::from_raw(env, name.into_raw()) };
+            let class_name: String = name_string.try_to_string(env).unwrap();
             assert_eq!(class_name.replace('.', "/"), expected_type);
         };
     }
 
     // Asserts that exception's message matches `expected_message`.
-    fn assert_exception_message(env: &mut JNIEnv, exception: JThrowable, expected_message: &str) {
+    fn assert_exception_message(env: &mut Env, exception: JThrowable, expected_message: &str) {
         let message = env
-            .call_method(exception, "getMessage", "()Ljava/lang/String;", &[])
+            .call_method(
+                exception,
+                jni::jni_str!("getMessage"),
+                jni::jni_sig!("()Ljava/lang/String;"),
+                &[],
+            )
             .unwrap()
             .l()
             .unwrap();
-        let message_string = message.into();
-        let msg_rust: String = env.get_string(&message_string).unwrap().into();
+        let message_string = unsafe { JString::from_raw(env, message.into_raw()) };
+        let msg_rust: String = message_string.try_to_string(env).unwrap();
         println!("{msg_rust}");
         // Since panics result in multi-line messages which include the backtrace, just use the
         // first line.
