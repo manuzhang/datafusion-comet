@@ -469,7 +469,11 @@ fn throw_exception(env: &mut Env, error: &CometError, backtrace: Option<String>)
     // If there isn't already an exception?
     if !env.exception_check() {
         // ... then throw new exception
-        match error {
+        // Note: in jni 0.22.x, throw/throw_new return Err(JavaException) on success
+        // (to signal the pending exception to Rust callers via `?`). We discard the
+        // result here because we're in an error-handling path and just need the
+        // exception to be pending in the JVM.
+        let _ = match error {
             CometError::JavaException {
                 class: _,
                 msg: _,
@@ -554,8 +558,7 @@ fn throw_exception(env: &mut Env, error: &CometError, backtrace: Option<String>)
                     }
                 }
             }
-        }
-        .expect("Thrown exception")
+        };
     }
 }
 
