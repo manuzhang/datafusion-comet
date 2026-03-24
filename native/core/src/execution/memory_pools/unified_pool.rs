@@ -28,14 +28,14 @@ use datafusion::{
     common::{resources_datafusion_err, DataFusionError},
     execution::memory_pool::{MemoryPool, MemoryReservation},
 };
-use jni::objects::{GlobalRef, JObject};
+use jni::objects::{Global, JObject};
 use log::warn;
 
 /// A DataFusion `MemoryPool` implementation for Comet that delegates to
 /// Spark's off-heap executor memory pool via JNI by calling
 /// [`crate::jvm_bridge::CometTaskMemoryManager`].
 pub struct CometUnifiedMemoryPool {
-    task_memory_manager_handle: Arc<GlobalRef<JObject<'static>>>,
+    task_memory_manager_handle: Arc<Global<JObject<'static>>>,
     used: AtomicUsize,
     task_attempt_id: i64,
 }
@@ -50,7 +50,7 @@ impl Debug for CometUnifiedMemoryPool {
 
 impl CometUnifiedMemoryPool {
     pub fn new(
-        task_memory_manager_handle: Arc<GlobalRef<JObject<'static>>>,
+        task_memory_manager_handle: Arc<Global<JObject<'static>>>,
         task_attempt_id: i64,
     ) -> CometUnifiedMemoryPool {
         Self {

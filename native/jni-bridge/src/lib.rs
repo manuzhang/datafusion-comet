@@ -347,7 +347,7 @@ fn get_throwable_class_name(
                 &[],
             )?
             .l()?;
-        let class_obj = unsafe { JClass::from_raw(env, class_obj.into_raw()) };
+        let class_obj = JClass::from_raw(env, class_obj.into_raw());
         let class_name = env
             .call_method_unchecked(
                 &class_obj,
@@ -356,7 +356,7 @@ fn get_throwable_class_name(
                 &[],
             )?
             .l()?;
-        let class_name = unsafe { JString::from_raw(env, class_name.into_raw()) };
+        let class_name = JString::from_raw(env, class_name.into_raw());
         let class_name_str = class_name.try_to_string(env)?;
 
         Ok(class_name_str)
@@ -378,7 +378,7 @@ fn get_throwable_message(
                 &[],
             )?
             .l()
-            .map(|obj| unsafe { JString::from_raw(env, obj.into_raw()) })?;
+            .map(|obj| JString::from_raw(env, obj.into_raw()))?;
         let message_str = if !message.is_null() {
             message.try_to_string(env)?
         } else {
@@ -393,7 +393,7 @@ fn get_throwable_message(
                 &[],
             )?
             .l()
-            .map(|obj| unsafe { JThrowable::from_raw(env, obj.into_raw()) })?;
+            .map(|obj| JThrowable::from_raw(env, obj.into_raw()))?;
 
         if !cause.is_null() {
             let cause_class_name = get_throwable_class_name(env, jvm_classes, &cause)?;

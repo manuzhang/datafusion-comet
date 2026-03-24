@@ -23,7 +23,7 @@ use datafusion::common::extensions_options;
 use datafusion::config::EncryptionFactoryOptions;
 use datafusion::error::DataFusionError;
 use datafusion::execution::parquet_encryption::EncryptionFactory;
-use jni::objects::{GlobalRef, JMethodID, JObject};
+use jni::objects::{Global, JMethodID, JObject};
 use object_store::path::Path;
 use parquet::encryption::decrypt::{FileDecryptionProperties, KeyRetriever};
 use parquet::encryption::encrypt::FileEncryptionProperties;
@@ -42,7 +42,7 @@ extensions_options! {
 
 #[derive(Debug)]
 pub struct CometEncryptionFactory {
-    pub(crate) key_unwrapper: Arc<GlobalRef<JObject<'static>>>,
+    pub(crate) key_unwrapper: Arc<Global<JObject<'static>>>,
 }
 
 /// `EncryptionFactory` is a DataFusion trait for types that generate
@@ -83,14 +83,14 @@ impl EncryptionFactory for CometEncryptionFactory {
 
 pub struct CometKeyRetriever {
     file_path: String,
-    key_unwrapper: Arc<GlobalRef<JObject<'static>>>,
+    key_unwrapper: Arc<Global<JObject<'static>>>,
     get_key_method_id: JMethodID,
 }
 
 impl CometKeyRetriever {
     pub fn new(
         file_path: &str,
-        key_unwrapper: Arc<GlobalRef<JObject<'static>>>,
+        key_unwrapper: Arc<Global<JObject<'static>>>,
     ) -> Result<Self, ExecutionError> {
         let mut env = JVMClasses::get_env()?;
         let env = env.borrow_env_mut();
@@ -120,7 +120,7 @@ impl KeyRetriever for CometKeyRetriever {
         let mut env = JVMClasses::get_env()?;
         let env = env.borrow_env_mut();
 
-        // Get the key unwrapper instance from GlobalRef
+        // Get the key unwrapper instance from Global
         let instance = self.key_unwrapper.as_obj();
 
         // Convert file path to JString

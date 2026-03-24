@@ -132,10 +132,10 @@ impl TypePromotionInfo {
 }
 
 fn convert_column_path(env: &mut Env, path_array: JObjectArray) -> JNIResult<ColumnPath> {
-    let array_len = env.get_array_length(&path_array)?;
+    let array_len = path_array.len(env)?;
     let mut res: Vec<String> = Vec::new();
     for i in 0..array_len {
-        let p = env.get_object_array_element(&path_array, i as usize)?;
+        let p = path_array.get_element(env, i)?;
         let p: JString = unsafe { JString::from_raw(env, p.into_raw()) };
         res.push(p.try_to_string(env)?);
     }
