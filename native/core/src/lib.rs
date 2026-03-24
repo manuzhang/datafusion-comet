@@ -96,12 +96,12 @@ pub extern "system" fn Java_org_apache_comet_NativeBase_init(
     errors::init();
 
     try_unwrap_or_throw(&e, |env| {
-        let path: String = log_conf_path.try_to_string(&env)?;
+        let path: String = log_conf_path.try_to_string(env)?;
 
         // empty path means there is no custom log4rs config file provided, so fallback to use
         // the default configuration
         let log_config = if path.is_empty() {
-            let log_level: String = match log_level.try_to_string(&env) {
+            let log_level: String = match log_level.try_to_string(env) {
                 Ok(level) => level,
                 Err(_) => "info".parse().unwrap(),
             };
@@ -141,7 +141,7 @@ pub extern "system" fn Java_org_apache_comet_NativeBase_isFeatureEnabled(
     feature_name: JString,
 ) -> jni::sys::jboolean {
     try_unwrap_or_throw(&env, |env| {
-        let feature: String = feature_name.try_to_string(&env)?;
+        let feature: String = feature_name.try_to_string(env)?;
 
         let enabled = match feature.as_str() {
             "jemalloc" => cfg!(feature = "jemalloc"),

@@ -204,7 +204,7 @@ pub unsafe extern "system" fn Java_org_apache_comet_Native_createPlan(
     task_cpus: jlong,
     key_unwrapper_obj: JObject,
 ) -> jlong {
-    try_unwrap_or_throw(&e, |mut env| {
+    try_unwrap_or_throw(&e, |env| {
         // Deserialize Spark configs
         let bytes = env.convert_byte_array(serialized_spark_configs)?;
         let spark_configs = serde::deserialize_config(bytes.as_slice())?;
@@ -248,7 +248,7 @@ pub unsafe extern "system" fn Java_org_apache_comet_Native_createPlan(
             let task_memory_manager =
                 Arc::new(jni_new_global_ref!(env, comet_task_memory_manager_obj)?);
 
-            let memory_pool_type = memory_pool_type.try_to_string(&env)?;
+            let memory_pool_type = memory_pool_type.try_to_string(env)?;
             let memory_pool_config = parse_memory_pool_config(
                 off_heap_mode != JNI_FALSE,
                 memory_pool_type,
@@ -270,7 +270,7 @@ pub unsafe extern "system" fn Java_org_apache_comet_Native_createPlan(
             for i in 0..num_local_dirs {
                 let local_dir = local_dirs.get_element(env, i)?;
                 let local_dir = unsafe { JString::from_raw(&*env, local_dir.into_raw()) };
-                let local_dir = local_dir.try_to_string(&env)?;
+                let local_dir = local_dir.try_to_string(env)?;
                 local_dirs_vec.push(local_dir);
             }
 
@@ -509,7 +509,7 @@ pub unsafe extern "system" fn Java_org_apache_comet_Native_executePlan(
     array_addrs: JLongArray,
     schema_addrs: JLongArray,
 ) -> jlong {
-    try_unwrap_or_throw(&e, |mut env| {
+    try_unwrap_or_throw(&e, |env| {
         // Retrieve the query
         let exec_context = get_execution_context(exec_context);
 
@@ -785,7 +785,7 @@ pub unsafe extern "system" fn Java_org_apache_comet_Native_writeSortedFileNative
                 let row_addresses_ptr = row_addresses.as_ptr();
                 let row_sizes_ptr = row_sizes.as_ptr();
 
-                let output_path: String = file_path.try_to_string(&env).unwrap();
+                let output_path: String = file_path.try_to_string(env).unwrap();
 
                 let current_checksum = if current_checksum == i64::MIN {
                     // Initial checksum is not available.
@@ -794,7 +794,7 @@ pub unsafe extern "system" fn Java_org_apache_comet_Native_writeSortedFileNative
                     Some(current_checksum as u32)
                 };
 
-                let compression_codec: String = compression_codec.try_to_string(&env).unwrap();
+                let compression_codec: String = compression_codec.try_to_string(env).unwrap();
 
                 let compression_codec = match compression_codec.as_str() {
                     "zstd" => CompressionCodec::Zstd(compression_level),
@@ -898,7 +898,7 @@ pub unsafe extern "system" fn Java_org_apache_comet_Native_traceBegin(
     event: JString,
 ) {
     try_unwrap_or_throw(&e, |env| {
-        let name: String = event.try_to_string(&env).unwrap();
+        let name: String = event.try_to_string(env).unwrap();
         trace_begin(&name);
         Ok(())
     })
@@ -913,7 +913,7 @@ pub unsafe extern "system" fn Java_org_apache_comet_Native_traceEnd(
     event: JString,
 ) {
     try_unwrap_or_throw(&e, |env| {
-        let name: String = event.try_to_string(&env).unwrap();
+        let name: String = event.try_to_string(env).unwrap();
         trace_end(&name);
         Ok(())
     })
@@ -929,7 +929,7 @@ pub unsafe extern "system" fn Java_org_apache_comet_Native_logMemoryUsage(
     value: jlong,
 ) {
     try_unwrap_or_throw(&e, |env| {
-        let name: String = name.try_to_string(&env).unwrap();
+        let name: String = name.try_to_string(env).unwrap();
         log_memory_usage(&name, value as u64);
         Ok(())
     })
