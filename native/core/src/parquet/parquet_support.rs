@@ -202,7 +202,7 @@ fn parquet_convert_array(
         }
         // Keep scan-time nested parquet conversion aligned with Spark's legacy
         // array<Date> -> array<Int> behavior without affecting scalar Date -> Int casts.
-        (Date32, Int32) => Ok(new_null_array(to_type, array.len())),
+        // (Date32, Int32) => Ok(new_null_array(to_type, array.len())),
         (Map(_, ordered_from), Map(_, ordered_to)) if ordered_from == ordered_to =>
             parquet_convert_map_to_map(array.as_map(), to_type, parquet_options, *ordered_to)
             ,
