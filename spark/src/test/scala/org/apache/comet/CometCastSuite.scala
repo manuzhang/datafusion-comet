@@ -1386,8 +1386,6 @@ class CometCastSuite extends CometTestBase with AdaptiveSparkPlanHelper {
           Cast.canCast(fromWrappedType, toWrappedType) &&
           CometCast.isSupported(fromWrappedType, toWrappedType, None, CometEvalMode.LEGACY) ==
             Compatible()) {
-          val legacyOnly =
-            fromType == DateType || (fromType == BooleanType && toType == TimestampType)
           val ansiSupported =
             CometCast.isSupported(fromWrappedType, toWrappedType, None, CometEvalMode.ANSI) ==
               Compatible()
@@ -1397,9 +1395,8 @@ class CometCastSuite extends CometTestBase with AdaptiveSparkPlanHelper {
           castTest(
             input,
             toWrappedType,
-            hasIncompatibleType = legacyOnly,
-            testAnsi = !legacyOnly && ansiSupported,
-            testTry = !legacyOnly && trySupported)
+            testAnsi = ansiSupported,
+            testTry = trySupported)
         }
       }
     }
