@@ -1386,17 +1386,16 @@ class CometCastSuite extends CometTestBase with AdaptiveSparkPlanHelper {
           Cast.canCast(fromWrappedType, toWrappedType) &&
           CometCast.isSupported(fromWrappedType, toWrappedType, None, CometEvalMode.LEGACY) ==
             Compatible()) {
-          val ansiSupported =
+          // Non-legacy modes are stricter for some casts (e.g., numeric to binary), so only run
+          // those checks when Comet reports support.
+          val nonLegacySupported =
             CometCast.isSupported(fromWrappedType, toWrappedType, None, CometEvalMode.ANSI) ==
-              Compatible()
-          val trySupported =
-            CometCast.isSupported(fromWrappedType, toWrappedType, None, CometEvalMode.TRY) ==
               Compatible()
           castTest(
             input,
             toWrappedType,
-            testAnsi = ansiSupported,
-            testTry = trySupported)
+            testAnsi = nonLegacySupported,
+            testTry = nonLegacySupported)
         }
       }
     }
