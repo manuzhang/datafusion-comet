@@ -29,6 +29,7 @@ import org.apache.spark.sql.comet.{CometNativeExec, CometNativeScanExec, CometSc
 import org.apache.spark.sql.execution.{FileSourceScanExec, InSubqueryExec, SubqueryAdaptiveBroadcastExec}
 import org.apache.spark.sql.execution.datasources.parquet.ParquetUtils
 import org.apache.spark.sql.internal.SQLConf
+import org.apache.spark.sql.types.StringType
 
 import org.apache.comet.{CometConf, ConfigEntry}
 import org.apache.comet.CometConf.COMET_EXEC_ENABLED
@@ -85,6 +86,18 @@ object CometNativeScan extends CometOperatorSerde[CometScanExec] with Logging {
         .contains("true")) {
 
       withFallbackReason(scanExec, "Full native scan disabled because ignoreMissingFiles enabled")
+    }
+
+    // Spark's binaryAsString option applies to unannotated Parquet BINARY columns. Spark can
+    // represent arbitrary bytes as StringType, but Arrow Utf8 requires valid UTF-8. Until the
+    // native reader has a Spark-compatible byte-to-string ingress policy (#4764), keep the read
+    // on Spark whenever this non-default compatibility mode is enabled.
+    val readsStringData = scanExec.requiredSchema.fields.exists(field =>
+      SupportLevel.containsType(field.dataType, classOf[StringType]))
+    if (SQLConf.get.getConf(SQLConf.PARQUET_BINARY_AS_STRING) && readsStringData) {
+      withFallbackReason(
+        scanExec,
+        s"Full native scan disabled because ${SQLConf.PARQUET_BINARY_AS_STRING.key} enabled")
     }
 
     // the scan is supported if no fallback reasons were added to the node

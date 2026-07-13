@@ -31,6 +31,7 @@ import org.scalatest.Tag
 
 import org.apache.hadoop.fs.Path
 import org.apache.parquet.example.data.simple.SimpleGroup
+import org.apache.parquet.io.api.Binary
 import org.apache.parquet.schema.MessageTypeParser
 import org.apache.spark.SparkException
 import org.apache.spark.sql.{CometTestBase, DataFrame, Row}
@@ -149,6 +150,57 @@ abstract class ParquetReadSuite extends CometTestBase {
     withParquetDataFrame(data) { df =>
       assertResult(data.map(_._1.mkString(",")).sorted) {
         df.collect().map(_.getAs[Array[Byte]](0).mkString(",")).sorted
+      }
+    }
+  }
+
+  test("spark.sql.parquet.binaryAsString falls back from native scan") {
+    withTempDir { dir =>
+      val path = new Path(dir.toURI.toString, "part-r-0.parquet")
+      val schema = MessageTypeParser.parseMessageType("""
+          |message root {
+          |  optional binary value;
+          |  optional int32 id;
+          |}
+          |""".stripMargin)
+      val writer = createParquetWriter(schema, path)
+      Seq(Binary.fromString("one"), Binary.fromConstantByteArray(Array(0xff.toByte))).zipWithIndex
+        .foreach { case (value, id) =>
+          val record = new SimpleGroup(schema)
+          record.add(0, value)
+          record.add(1, id)
+          writer.write(record)
+        }
+      writer.close()
+
+      withSQLConf(SQLConf.PARQUET_BINARY_AS_STRING.key -> "false") {
+        val df = spark.read.parquet(path.toString)
+        assert(
+          df.schema === StructType(
+            Seq(StructField("value", BinaryType, true), StructField("id", IntegerType, true))))
+        val (_, cometPlan) = checkSparkAnswer(df)
+        assert(
+          collect(cometPlan) { case _: CometNativeScanExec => true }.nonEmpty,
+          s"Expected native scan with binaryAsString disabled:\n${cometPlan.treeString}")
+      }
+
+      withSQLConf(SQLConf.PARQUET_BINARY_AS_STRING.key -> "true") {
+        val df = spark.read.parquet(path.toString)
+        assert(
+          df.schema === StructType(
+            Seq(StructField("value", StringType, true), StructField("id", IntegerType, true))))
+        val (_, cometPlan) = checkSparkAnswerAndFallbackReason(
+          df,
+          s"Full native scan disabled because ${SQLConf.PARQUET_BINARY_AS_STRING.key} enabled")
+        assert(
+          collect(cometPlan) { case _: CometNativeScanExec => true }.isEmpty,
+          s"Native scan should fall back with binaryAsString enabled:\n${cometPlan.treeString}")
+
+        val projected = spark.read.parquet(path.toString).select("id")
+        val (_, projectedCometPlan) = checkSparkAnswer(projected)
+        assert(
+          collect(projectedCometPlan) { case _: CometNativeScanExec => true }.nonEmpty,
+          s"Expected native scan when no string columns are read:\n${projectedCometPlan.treeString}")
       }
     }
   }

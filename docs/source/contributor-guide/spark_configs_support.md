@@ -43,6 +43,11 @@ The status column uses these values:
   - Affected expressions: `date_format`, `from_unixtime`, `unix_timestamp`, `to_unix_timestamp`, `to_timestamp`, `to_timestamp_ntz`, `to_date`, `try_to_timestamp` (Spark 4+)
   - Spark versions checked: 3.4.3, 3.5.8, 4.0.1
   - Date: 2026-05-02
+- `spark.sql.parquet.binaryAsString`
+  - Default: `false`
+  - Status: Partial (native scan when disabled; Spark scan fallback for string columns when enabled)
+  - Affected operator: native Parquet scan
+  - Date: 2026-07-13
 
 ## Audit Notes
 
@@ -110,3 +115,25 @@ whitelist, this audit should be revisited and the policy must be honored explici
 Comet bugs were uncovered by the audit. The tests use `query spark_answer_only` so
 that result-correctness is enforced regardless of whether Comet runs the expression
 natively or falls back.
+
+### `spark.sql.parquet.binaryAsString`
+
+**Source.** When enabled, Spark infers unannotated Parquet `BINARY` columns as
+`StringType`. Parquet files written by Spark carry Spark schema metadata, so this
+configuration does not change the types inferred for those files.
+
+**Comet status.** Comet's native Parquet scan falls back to Spark when the
+configuration is enabled and the required schema contains a string column. Scans that
+do not read strings remain native. Although DataFusion can coerce valid binary values
+to Arrow `Utf8` when Spark's inferred schema requests a string, Spark strings can
+contain arbitrary bytes while Arrow strings require valid UTF-8. Falling back avoids
+rejecting or unsafely interpreting such values in the native Parquet reader until
+Comet has a unified invalid-UTF-8 ingress policy
+([#4764](https://github.com/apache/datafusion-comet/issues/4764)). The default `false`
+value continues to use the native scan and returns unannotated `BINARY` columns as
+`BinaryType`.
+
+**Test coverage.** `ParquetReadV1Suite` writes a raw Parquet file without Spark schema
+metadata and verifies the inferred schema under both configuration values. It also
+asserts that the default value uses `CometNativeScanExec` and the enabled value records
+the expected native-scan fallback reason.
