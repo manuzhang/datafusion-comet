@@ -43,6 +43,11 @@ The status column uses these values:
   - Affected expressions: `date_format`, `from_unixtime`, `unix_timestamp`, `to_unix_timestamp`, `to_timestamp`, `to_timestamp_ntz`, `to_date`, `try_to_timestamp` (Spark 4+)
   - Spark versions checked: 3.4.3, 3.5.8, 4.0.1
   - Date: 2026-05-02
+- `spark.sql.parquet.binaryAsString`
+  - Default: `false`
+  - Status: Partial (native execution when disabled; Spark fallback for affected data when enabled)
+  - Affected operators: native Parquet scan, Spark-to-Arrow conversion, shuffle
+  - Date: 2026-07-14
 
 ## Audit Notes
 
@@ -110,3 +115,29 @@ whitelist, this audit should be revisited and the policy must be honored explici
 Comet bugs were uncovered by the audit. The tests use `query spark_answer_only` so
 that result-correctness is enforced regardless of whether Comet runs the expression
 natively or falls back.
+
+### `spark.sql.parquet.binaryAsString`
+
+**Source.** When enabled, Spark infers unannotated Parquet `BINARY` columns as
+`StringType`. Parquet files written by Spark carry Spark schema metadata, so this
+configuration does not change the types inferred for those files.
+
+**Comet status.** When the configuration is enabled and a Parquet scan's required
+schema contains a string column, Comet keeps the scan and every downstream shuffle
+that carries its data in Spark. Direct Spark-to-Arrow conversion of the scan is also
+disabled. Scans that do not read strings remain native. Although DataFusion can coerce
+valid binary values to Arrow `Utf8` when Spark's inferred schema requests a string,
+Spark strings can contain arbitrary bytes while Arrow strings require valid UTF-8.
+Keeping the data in Spark avoids rejecting or unsafely interpreting such values until
+Comet has a unified invalid-UTF-8 ingress policy
+([#4764](https://github.com/apache/datafusion-comet/issues/4764)). The default `false`
+value continues to use the native scan and returns unannotated `BINARY` columns as
+`BinaryType`.
+
+**Test coverage.** `ParquetReadV1Suite` writes a raw Parquet file without Spark schema
+metadata and verifies the inferred schema under both configuration values, including a
+distinct aggregation over different malformed byte sequences. It asserts that the
+default value uses `CometNativeScanExec`, while the enabled value records the expected
+native-scan fallback reason without using Spark-to-Arrow conversion or Comet shuffle.
+The boundary checks cover both V1 and V2 Parquet scans, and a projection that reads no
+strings remains native.

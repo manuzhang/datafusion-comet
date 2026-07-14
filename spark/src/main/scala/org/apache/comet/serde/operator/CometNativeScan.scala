@@ -29,6 +29,7 @@ import org.apache.spark.sql.comet.{CometNativeExec, CometNativeScanExec, CometSc
 import org.apache.spark.sql.execution.{FileSourceScanExec, InSubqueryExec, SubqueryAdaptiveBroadcastExec}
 import org.apache.spark.sql.execution.datasources.parquet.ParquetUtils
 import org.apache.spark.sql.internal.SQLConf
+import org.apache.spark.sql.types.StringType
 
 import org.apache.comet.{CometConf, ConfigEntry}
 import org.apache.comet.CometConf.COMET_EXEC_ENABLED
@@ -87,8 +88,27 @@ object CometNativeScan extends CometOperatorSerde[CometScanExec] with Logging {
       withFallbackReason(scanExec, "Full native scan disabled because ignoreMissingFiles enabled")
     }
 
+    if (requiresBinaryAsStringFallback(scanExec)) {
+      withFallbackReason(
+        scanExec,
+        s"Full native scan disabled because ${SQLConf.PARQUET_BINARY_AS_STRING.key} enabled")
+    }
+
     // the scan is supported if no fallback reasons were added to the node
     !hasFallbackReason(scanExec)
+  }
+
+  /**
+   * Whether a Spark Parquet scan can produce strings containing bytes that Arrow Utf8 cannot
+   * represent. This also guards Spark-to-Arrow and shuffle boundaries in
+   * [[org.apache.comet.rules.CometExecRule]].
+   */
+  private[comet] def requiresBinaryAsStringFallback(scanExec: FileSourceScanExec): Boolean = {
+    val isBuiltInParquet = CometScanExec.isFileFormatSupported(scanExec.relation.fileFormat)
+    val readsStringData = scanExec.requiredSchema.fields.exists(field =>
+      SupportLevel.containsType(field.dataType, classOf[StringType]))
+
+    isBuiltInParquet && SQLConf.get.getConf(SQLConf.PARQUET_BINARY_AS_STRING) && readsStringData
   }
 
   /** Detects AQE DPP (SubqueryAdaptiveBroadcastExec), as opposed to non-AQE DPP. */

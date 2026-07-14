@@ -67,6 +67,10 @@ object CometExecRule {
   val COMET_UNSAFE_PARTIAL: TreeNodeTag[String] =
     TreeNodeTag[String]("comet.unsafePartialAgg")
 
+  /** Marks plan nodes whose string output may contain non-UTF-8 bytes from binaryAsString. */
+  private val BINARY_AS_STRING_UNSAFE: TreeNodeTag[Unit] =
+    TreeNodeTag[Unit]("comet.binaryAsStringUnsafe")
+
   /**
    * Fully native operators.
    */
@@ -180,6 +184,50 @@ case class CometExecRule(session: SparkSession)
 
   private def shouldSkipCometShuffle(s: ShuffleExchangeExec): Boolean =
     s.getTagValue(CometExecRule.SKIP_COMET_SHUFFLE_TAG).isDefined
+
+  private def outputsStringData(plan: SparkPlan): Boolean =
+    plan.output.exists(attr =>
+      SupportLevel.containsType(attr.dataType, classOf[StringType]))
+
+  private def isBinaryAsStringScan(plan: SparkPlan): Boolean = plan match {
+    case scan: FileSourceScanExec =>
+      CometNativeScan.requiresBinaryAsStringFallback(scan)
+    case scan: BatchScanExec if scan.scan.isInstanceOf[ParquetScan] =>
+      SQLConf.get.getConf(SQLConf.PARQUET_BINARY_AS_STRING) && outputsStringData(scan)
+    case _ => false
+  }
+
+  private def binaryAsStringChildren(plan: SparkPlan): Seq[SparkPlan] = plan match {
+    // Query stages and reused exchanges are leaf nodes in Spark's normal tree traversal even
+    // though their plans can preserve the unsafe string provenance from an earlier AQE pass.
+    case stage: ShuffleQueryStageExec => Seq(stage.plan)
+    case stage: BroadcastQueryStageExec => Seq(stage.plan)
+    case reused: ReusedExchangeExec => Seq(reused.child)
+    case _ => plan.children
+  }
+
+  /**
+   * Spark can store arbitrary bytes in StringType when binaryAsString is enabled, but Arrow Utf8
+   * requires valid UTF-8. Propagate that provenance through string-producing nodes, including
+   * opaque AQE stages, and keep every affected shuffle in Spark.
+   */
+  private def tagBinaryAsStringBoundaries(plan: SparkPlan): Unit = {
+    def visit(node: SparkPlan): Boolean = {
+      val hasUnsafeInput =
+        isBinaryAsStringScan(node) || binaryAsStringChildren(node).exists(visit)
+      val hasUnsafeStringOutput = hasUnsafeInput && outputsStringData(node)
+      if (hasUnsafeStringOutput) {
+        node.setTagValue(CometExecRule.BINARY_AS_STRING_UNSAFE, ())
+        node match {
+          case shuffle: ShuffleExchangeExec =>
+            shuffle.setTagValue(CometExecRule.SKIP_COMET_SHUFFLE_TAG, ())
+          case _ =>
+        }
+      }
+      hasUnsafeStringOutput
+    }
+    visit(plan)
+  }
 
   private def applyCometShuffle(plan: SparkPlan): SparkPlan = {
     plan.transformUp {
@@ -558,6 +606,8 @@ case class CometExecRule(session: SparkSession)
     // belongs to a streaming query (detected via StreamSourceAwareSparkPlan.getStream).
     if (ShimCometStreaming.isStreamingPlan(plan)) return plan
 
+    tagBinaryAsStringBoundaries(plan)
+
     if (!CometConf.COMET_EXEC_ENABLED.get(conf)) {
       // Comet exec is disabled, but for Spark shuffle, we still can use Comet columnar shuffle
       if (isCometShuffleEnabled(conf)) {
@@ -787,6 +837,8 @@ case class CometExecRule(session: SparkSession)
     // operators can have a chance to be converted to columnar. Leaf operators that output
     // columnar batches, such as Spark's vectorized readers, will also be converted to native
     // comet batches.
+    if (op.getTagValue(CometExecRule.BINARY_AS_STRING_UNSAFE).isDefined) return false
+
     val fallbackReasons = new ListBuffer[String]()
     if (CometSparkToColumnarExec.isSchemaSupported(op.schema, fallbackReasons)) {
       op match {
