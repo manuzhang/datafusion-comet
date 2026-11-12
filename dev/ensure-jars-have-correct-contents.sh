@@ -37,6 +37,7 @@ set -o pipefail
 
 script_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 binary_license="${script_dir}/licenses/LICENSE-binary.txt"
+binary_notice="${script_dir}/licenses/NOTICE-binary.txt"
 
 bundled_protobuf_version ()
 {
@@ -208,7 +209,7 @@ for artifact_index in "${!artifact_list[@]}"; do
     echo "[INFO] Artifact looks correct: '$(basename "${artifact}")'"
   fi
 
-  # Check the complete license text in both main and sources jars containing libcomet.
+  # Check the complete license and notice text in both main and sources jars containing libcomet.
   # Common/test-only jars without the native library keep their existing legal resources.
   # Here-strings rather than pipes: under pipefail, grep -q closing a pipe early could fail
   # the writer and hide a match.
@@ -226,6 +227,16 @@ for artifact_index in "${!artifact_list[@]}"; do
       bad_artifacts=${bad_artifacts}+1
     else
       echo "[INFO] Binary LICENSE matches: '$(basename "${artifact}")'"
+    fi
+    notice_count=$(awk '$0 == "META-INF/NOTICE" { n++ } END { print n+0 }' <<< "${entries}")
+    if [ "${notice_count}" -ne 1 ]; then
+      echo "[ERROR] Expected exactly one META-INF/NOTICE in '${artifact}'."
+      bad_artifacts=${bad_artifacts}+1
+    elif ! unzip -p "${artifact}" META-INF/NOTICE | cmp -s "${binary_notice}" -; then
+      echo "[ERROR] Binary NOTICE differs or is missing a bundled notice in '${artifact}'."
+      bad_artifacts=${bad_artifacts}+1
+    else
+      echo "[INFO] Binary NOTICE matches: '$(basename "${artifact}")'"
     fi
   fi
 done

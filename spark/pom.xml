@@ -755,7 +755,7 @@ under the License.
                          separately and writes the name twice, failing the build. Excluding the
                          already relocated copy on the way in leaves exactly one. -->
                     <exclude>META-INF/services/${comet.shade.packageName}.arrow.*</exclude>
-                    <!-- The transformers below supply the binary LICENSE and project NOTICE.
+                    <!-- The transformers below supply the binary LICENSE and NOTICE.
                          Exclude input copies, including those from an earlier incremental build. -->
                     <exclude>META-INF/LICENSE</exclude>
                     <exclude>META-INF/NOTICE</exclude>
@@ -819,12 +819,13 @@ under the License.
                 </transformer>
                 <!-- The ASF parent POM generates a META-INF/NOTICE holding only the ASF boilerplate,
                      and shade kept that one, so the attributions in NOTICE.txt (Apache Gluten) never
-                     reached the jar or the sources jar. Ship NOTICE.txt itself instead, which keeps
-                     the two in step without a second copy to maintain. -->
+                     reached the jar or the sources jar. Ship the binary NOTICE instead, which
+                     dev/generate-binary-license.py builds from NOTICE.txt and the notices of the
+                     dependencies bundled in the jar. -->
                 <transformer
                   implementation="org.apache.maven.plugins.shade.resource.IncludeResourceTransformer">
                   <resource>META-INF/NOTICE</resource>
-                  <file>${project.basedir}/../NOTICE.txt</file>
+                  <file>${project.basedir}/../dev/licenses/NOTICE-binary.txt</file>
                 </transformer>
               </transformers>
             </configuration>

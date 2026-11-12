@@ -1,0 +1,121 @@
+Apache DataFusion Comet
+Copyright 2024-2026 The Apache Software Foundation
+
+This product includes software developed at
+The Apache Software Foundation (http://www.apache.org/).
+
+This product includes software developed at
+Apache Gluten (https://github.com/apache/incubator-gluten/)
+Specifically:
+- Optimizer rule to replace SortMergeJoin with ShuffleHashJoin
+
+--------------------------------------------------------------------------------
+
+The native Comet library in this JAR bundles libhdfs from Apache Hadoop:
+
+Apache Hadoop
+Copyright 2006 and onwards The Apache Software Foundation.
+
+This product includes software developed at
+The Apache Software Foundation (http://www.apache.org/).
+
+--------------------------------------------------------------------------------
+
+Apache Avro
+Copyright 2010-2025 The Apache Software Foundation
+
+This product includes software developed at
+The Apache Software Foundation (https://www.apache.org/).
+
+The initial implementation of the Apache Avro Rust SDK has been 
+developed by Flavien Raynaud (https://github.com/flavray/avro-rs)
+and donated to the Apache Avro project in 2020.
+
+--------------------------------------------------------------------------------
+
+Apache Arrow
+Copyright 2016-2026 The Apache Software Foundation
+
+This product includes software developed at
+The Apache Software Foundation (http://www.apache.org/).
+
+This product includes software from the chronoutil crate (MIT)
+ * Copyright (c) 2020-2022 Oliver Margetts
+ * https://github.com/olliemath/chronoutil
+
+This product includes software from the compact-thrift project (Apache 2.0)
+ * Copyright Jörn Horstmann
+ * https://github.com/jhorstmann/compact-thrift
+
+--------------------------------------------------------------------------------
+
+Apache Asyncband (Incubating)
+Copyright 2026 The Apache Software Foundation
+
+This product includes software developed at
+The Apache Software Foundation (https://www.apache.org/).
+
+--------------------------------------------------------------------------------
+
+Apache DataFusion
+Copyright 2019-2026 The Apache Software Foundation
+
+This product includes software developed at
+The Apache Software Foundation (http://www.apache.org/).
+
+--------------------------------------------------------------------------------
+
+Apache DataSketches Rust
+Copyright 2025-2026 The Apache Software Foundation
+
+This product includes software developed at
+The Apache Software Foundation (http://www.apache.org/).
+
+--------------------------------------------------------------------------------
+
+Apache Iceberg Rust
+Copyright 2023-2026 The Apache Software Foundation
+
+This product includes software developed at
+The Apache Software Foundation (http://www.apache.org/).
+
+--------------------------------------------------------------------------------
+
+Additional Notices for Moka
+
+The majority of the Moka library is dual-licensed under the MIT and Apache 2.0
+licenses.
+
+However, the following files are an exception and are licensed solely under
+the Apache License 2.0:
+
+- src/common/frequency_sketch.rs
+- src/common/timer_wheel.rs
+
+These files were ported from the Java Caffeine library and are not dual-licensed.
+
+Please refer to the LICENSE-APACHE file for more details on the Apache License 2.0.
+
+--------------------------------------------------------------------------------
+
+Apache Arrow Object Store
+Copyright 2020-2024 The Apache Software Foundation
+
+This product includes software developed at
+The Apache Software Foundation (http://www.apache.org/).
+
+--------------------------------------------------------------------------------
+
+Apache OpenDAL
+Copyright 2023-2026 The Apache Software Foundation
+
+This product includes software developed at
+The Apache Software Foundation (http://www.apache.org/).
+
+--------------------------------------------------------------------------------
+
+Apache OpenDAL Reqsign
+Copyright 2025-2026 The Apache Software Foundation
+
+This product includes software developed at
+The Apache Software Foundation (http://www.apache.org/).

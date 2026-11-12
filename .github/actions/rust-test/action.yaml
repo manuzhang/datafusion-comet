@@ -57,14 +57,11 @@ runs:
         cd native
         cargo install cargo-machete --version 0.7.0 && cargo machete
 
-    # The LICENSE in the JARs lists every crate linked into libcomet. `--frozen` needs the
-    # sources of the whole lock file, which the steps above fetch only for this platform.
-    - name: Check the binary LICENSE is up to date
+    # The LICENSE in the JARs lists every crate linked into libcomet. This compares the list
+    # with `cargo tree`. It does not regenerate the file, which needs cargo-about.
+    - name: Check the binary LICENSE lists the linked crates
       shell: bash
-      run: |
-        cargo install cargo-about --version 0.9.3 --locked --features cli
-        cargo fetch --locked --manifest-path native/Cargo.toml
-        python3 dev/generate-binary-license.py --check
+      run: python3 dev/generate-binary-license.py --check-crates
 
     # Borrows the Maven repository the TPC-H/TPC-DS jobs keep warm on main, a
     # superset of what `common` needs. This job no longer runs on push to main

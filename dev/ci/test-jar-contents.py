@@ -19,10 +19,11 @@
 
 """Test dev/ensure-jars-have-correct-contents.sh against real ZIP files.
 
-The checker reads pom.xml and dev/licenses/LICENSE-binary.txt relative to itself. Each test
+The checker reads pom.xml, dev/licenses/LICENSE-binary.txt and dev/licenses/NOTICE-binary.txt
+relative to itself. Each test
 runs a copy of it in a temporary tree whose pom pins the version that LICENSE-binary.txt names,
-so only test_license_matches_pom reads the real pom. dev/generate-binary-license.py --check
-covers the section of the LICENSE generated from native/Cargo.lock.
+so only test_license_matches_pom reads the real pom. dev/generate-binary-license.py
+--check-crates covers the section of the LICENSE generated from native/Cargo.lock.
 """
 
 from pathlib import Path
@@ -37,6 +38,7 @@ import zipfile
 ROOT = Path(__file__).resolve().parents[2]
 CHECKER = ROOT / "dev/ensure-jars-have-correct-contents.sh"
 LICENSE = (ROOT / "dev/licenses/LICENSE-binary.txt").read_bytes()
+NOTICE = (ROOT / "dev/licenses/NOTICE-binary.txt").read_bytes()
 NATIVE_LIB = "org/apache/comet/linux/amd64/libcomet.so"
 
 
@@ -67,13 +69,14 @@ class JarContents(unittest.TestCase):
         (self.root / "dev/licenses").mkdir(parents=True)
         shutil.copy(CHECKER, self.checker)
         (self.root / "dev/licenses/LICENSE-binary.txt").write_bytes(LICENSE)
+        (self.root / "dev/licenses/NOTICE-binary.txt").write_bytes(NOTICE)
         self.pom(pom(PROTOBUF))
         self.main = self.jar("main.jar")
 
     def pom(self, text):
         (self.root / "pom.xml").write_text(text)
 
-    def jar(self, name, entry=None, native=True, licenses=(LICENSE,)):
+    def jar(self, name, entry=None, native=True, licenses=(LICENSE,), notices=(NOTICE,)):
         path = self.root / name
         with warnings.catch_warnings():
             # Duplicate entries are the point of one test; zipfile warns about them.
@@ -83,6 +86,8 @@ class JarContents(unittest.TestCase):
                     archive.writestr(NATIVE_LIB, b"")
                 for text in licenses:
                     archive.writestr("META-INF/LICENSE", text)
+                for text in notices:
+                    archive.writestr("META-INF/NOTICE", text)
                 if entry:
                     archive.writestr(entry, "// source\n")
         return str(path)
@@ -148,20 +153,40 @@ class JarContents(unittest.TestCase):
         with zipfile.ZipFile(artifact, "w") as archive:
             archive.writestr(NATIVE_LIB, b"")
             archive.writestr("META-INF/LICENSE", LICENSE)
+            archive.writestr("META-INF/NOTICE", NOTICE)
             for i in range(30000):
                 archive.writestr(f"org/apache/comet/C{i}.class", b"")
         self.assertIn("Binary LICENSE matches", self.passed(str(artifact)))
 
     def test_jar_without_native_library_keeps_its_license(self):
         # Common and test-only jars carry no libcomet, so the binary LICENSE does not apply.
-        common = self.jar("common.jar", native=False, licenses=())
-        self.assertNotIn("Binary LICENSE", self.passed(common))
+        common = self.jar("common.jar", native=False, licenses=(), notices=())
+        output = self.passed(common)
+        self.assertNotIn("Binary LICENSE", output)
+        self.assertNotIn("Binary NOTICE", output)
 
     def test_missing_or_duplicate_license(self):
         for licenses in [(), (LICENSE, LICENSE)]:
             with self.subTest(count=len(licenses)):
                 artifact = self.jar("native.jar", licenses=licenses)
                 self.failed([artifact], "Expected exactly one META-INF/LICENSE")
+
+    def test_missing_or_duplicate_notice(self):
+        for notices in [(), (NOTICE, NOTICE)]:
+            with self.subTest(count=len(notices)):
+                artifact = self.jar("native.jar", notices=notices)
+                self.failed([artifact], "Expected exactly one META-INF/NOTICE")
+
+    def test_altered_notice(self):
+        cases = {
+            # What shipped before: the project NOTICE without the bundled notices.
+            "project only": (ROOT / "NOTICE.txt").read_bytes(),
+            "no Arrow attribution": without_line(NOTICE, b" * Copyright (c) 2020-2022 Oliver"),
+        }
+        for case, text in cases.items():
+            with self.subTest(case):
+                artifact = self.jar("native.jar", notices=(text,))
+                self.failed([artifact], "Binary NOTICE differs")
 
     def test_altered_license(self):
         cases = {

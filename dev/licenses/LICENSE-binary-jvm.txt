@@ -1,3 +1,16 @@
+This JAR bundles these JVM dependencies under the Apache License 2.0 above:
+
+  - Apache Arrow Java (arrow-c-data, arrow-compression, arrow-format, arrow-memory-core,
+    arrow-memory-unsafe, arrow-vector)
+  - Guava
+
+Guava's com.google.thirdparty.publicsuffix classes hold data from the Public Suffix List
+(https://publicsuffix.org/), which the Mozilla Foundation publishes under the Mozilla Public
+License 2.0 (https://www.mozilla.org/MPL/2.0/). The list's source is at
+https://github.com/publicsuffix/list.
+
+--------------------------------------------------------------------------------
+
 The Comet JAR bundles protobuf-java 3.25.5 (BSD-3-Clause).
 https://github.com/protocolbuffers/protobuf/blob/v25.5/LICENSE
 

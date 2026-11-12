@@ -763,10 +763,12 @@ and the labels that opt a pull request into a queue-only or nightly suite.
 
 ### 7. Regenerate the Binary LICENSE After Changing Native Dependencies
 
-The Comet JARs ship `dev/licenses/LICENSE-binary.txt` as `META-INF/LICENSE`. It lists every crate
-linked into `libcomet` with its license text, and CI fails when the list is out of date. Crate
-versions are not part of the file, so a version bump needs a new file only when it adds or
-removes a crate or changes a license text. Regenerate it with
+The Comet JARs ship `dev/licenses/LICENSE-binary.txt` as `META-INF/LICENSE` and
+`dev/licenses/NOTICE-binary.txt` as `META-INF/NOTICE`. The LICENSE lists every crate linked into
+`libcomet` with its license text, and the NOTICE carries the NOTICE file of each crate that has
+one. CI fails when the crates listed are not the crates linked, but it does not regenerate the
+files. Crate versions are not part of them, so a version bump needs new files only when it adds
+or removes a crate or changes a license text or a NOTICE. Regenerate them with
 [cargo-about](https://github.com/EmbarkStudios/cargo-about):
 
 ```sh
@@ -777,8 +779,11 @@ dev/generate-binary-license.py
 
 A new crate under a license that `dev/licenses/about.toml` does not accept fails the generation.
 Check that the license is acceptable for an
-[ASF release](https://www.apache.org/legal/resolved.html) before adding it to the list. The JVM
-dependencies shaded into the JAR are maintained by hand in `dev/licenses/LICENSE-binary-jvm.txt`.
+[ASF release](https://www.apache.org/legal/resolved.html) before adding it to the list. A new
+crate that ships no license file gets the standard text of its license; add a copy of the file
+from its repository under `dev/licenses/crates` and name it in the script. The JVM dependencies
+shaded into the JAR are maintained by hand in `dev/licenses/LICENSE-binary-jvm.txt`, and the
+notices no crate carries in `dev/licenses/NOTICE-binary-bundled.txt`.
 
 ### Pre-PR Summary
 
