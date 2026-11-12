@@ -38,19 +38,6 @@ set -o pipefail
 script_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 binary_license="${script_dir}/licenses/LICENSE-binary.txt"
 
-locked_version ()
-{
-  # Cargo generates these package/name/version records. Reject absent or ambiguous versions.
-  awk -v wanted="$1" '
-    /^\[\[package\]\]/ { name = "" }
-    $1 == "name" && $2 == "=" { name = $3; gsub(/["\r]/, "", name) }
-    $1 == "version" && $2 == "=" && name == wanted {
-      version = $3; gsub(/["\r]/, "", version); count++
-    }
-    END { if (count != 1) exit 1; print version }
-  ' "${script_dir}/../native/Cargo.lock"
-}
-
 bundled_protobuf_version ()
 {
   # The root pom sets the protobuf-java version that Maven Shade bundles. Reject absent or
@@ -70,26 +57,16 @@ licensed ()
 
 check_license_versions ()
 {
-  local lz4_version zstd_sys_version zstd_version protobuf_version
-  if ! lz4_version=$(locked_version lz4_flex) || ! zstd_sys_version=$(locked_version zstd-sys); then
-    echo "[ERROR] Expected one lz4_flex and one zstd-sys version in native/Cargo.lock."
-    return 1
-  fi
-  case "${zstd_sys_version}" in
-    *+zstd.*) zstd_version=${zstd_sys_version##*+zstd.} ;;
-    *) echo "[ERROR] Cannot read the vendored Zstandard version from zstd-sys ${zstd_sys_version}."; return 1 ;;
-  esac
-  if ! licensed "The native Comet library bundles lz4_flex ${lz4_version} (MIT)." ||
-      ! licensed "The native Comet library bundles Zstandard ${zstd_version} (BSD-3-Clause)."; then
-    echo "[ERROR] Update LICENSE-binary.txt for locked lz4_flex ${lz4_version} / Zstandard ${zstd_version}."
-    return 1
-  fi
+  # dev/generate-binary-license.py generates the native section from native/Cargo.lock, and
+  # CI fails when it is out of date. The JVM section is maintained by hand, so check it here.
+  local protobuf_version
   if ! protobuf_version=$(bundled_protobuf_version); then
     echo "[ERROR] Expected one protobuf.version property in pom.xml."
     return 1
   fi
   if ! licensed "The Comet JAR bundles protobuf-java ${protobuf_version} (BSD-3-Clause)."; then
-    echo "[ERROR] Update LICENSE-binary.txt for bundled protobuf-java ${protobuf_version}."
+    echo "[ERROR] Update LICENSE-binary-jvm.txt for bundled protobuf-java ${protobuf_version}"
+    echo "[ERROR] and run dev/generate-binary-license.py."
     return 1
   fi
 }

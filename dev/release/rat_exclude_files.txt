@@ -9,6 +9,7 @@ native/Cargo.lock
 native/native-executors/Cargo.lock
 # Binary license contains the Apache license and unmodified upstream license texts.
 dev/licenses/LICENSE-binary.txt
+dev/licenses/LICENSE-binary-jvm.txt
 dev/copyright/scala-header.txt
 dev/diffs/iceberg/*.diff
 dev/release/requirements.txt
